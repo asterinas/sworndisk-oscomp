@@ -71,17 +71,21 @@ SwornDisk的安全性高于Linux内核中现有各种文件I/O（如[eCryptFS](h
 
 ### C版本
 
+<iframe src="//player.bilibili.com/player.html?aid=854705601&bvid=BV1YL4y1K7cY&cid=738726274&page=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
+
 ### Rust版本
+
+<iframe src="//player.bilibili.com/player.html?aid=597143656&bvid=BV1NB4y197Et&cid=738729260&page=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
 
 ## 编译和测试
 
-* C版本
-* Rust版本
+* [C版本](./docs/c/sworndisk-linux-c-compile-and-run.md)
+* [Rust版本](./docs/rust/compile-and-run.md)
 
 ## 技术细节
 
-* C版本
-* Rust版本
+* [C版本](./docs/c/sworndisk-linux-c-modules.md)
+* [Rust版本](./docs/rust/project-design.md)
 
 ## 开源许可
 
