@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "deps/async-work",
+    "deps/crypto",
+    "deps/device-mapper",
+    "dm-sworndisk"
+]
