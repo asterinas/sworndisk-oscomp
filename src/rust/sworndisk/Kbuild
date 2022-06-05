@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0
+
+## SwornDisk
+obj-$(CONFIG_SWORNDISK) += dm-sworndisk.o
+
+## Device Mapper Block Manager and dependencies
+# obj-$(CONFIG_DM_BUFIO) += ../../drivers/md/dm-bufio.o
+# obj-$(CONFIG_LIBCRC32C) += ../../lib/libcrc32c.o
+# obj-$(CONFIG_DM_PERSISTENT_DATA) += ../../drivers/md/persistent-data/

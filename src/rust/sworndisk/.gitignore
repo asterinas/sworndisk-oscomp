@@ -1,0 +1,2 @@
+# ignore cargo build targets
+target/*
