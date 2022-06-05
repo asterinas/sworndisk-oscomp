@@ -68,20 +68,18 @@ SwornDisk的安全性高于Linux内核中现有各种文件I/O（如[eCryptFS](h
 我们未来计划继续完善SwornDisk以及Rust版Device Mapper框架的实现，并希望最终能将我们代码贡献给Linux内核主干。
 
 ## 项目演示
-
-### C版本
-
-### Rust版本
+- [C版本](https://www.bilibili.com/video/BV1YL4y1K7cY/)
+- [Rust版本](https://www.bilibili.com/video/BV1NB4y197Et/)
 
 ## 编译和测试
 
-* C版本
-* Rust版本
+* [C版本](./docs/c/sworndisk-linux-c-compile-and-run.md)
+* [Rust版本](./docs/rust/compile-and-run.md)
 
 ## 技术细节
 
-* C版本
-* Rust版本
+* [C版本](./docs/c/sworndisk-linux-c-modules.md)
+* [Rust版本](./docs/rust/project-design.md)
 
 ## 开源许可
 
