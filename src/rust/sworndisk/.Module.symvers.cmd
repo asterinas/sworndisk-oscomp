@@ -1,1 +1,0 @@
-cmd_/home/bellaris/Workspace/linux/modules/sworndisk/Module.symvers := sed 's/\.ko$$/.lto\.o/' /home/bellaris/Workspace/linux/modules/sworndisk/modules.order | scripts/mod/modpost  -a  -o /home/bellaris/Workspace/linux/modules/sworndisk/Module.symvers -e -i Module.symvers  -N -T -

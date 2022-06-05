@@ -1,1 +1,0 @@
-cmd_/home/bellaris/Workspace/linux/modules/sworndisk/dm-sworndisk.mod := { echo  /home/bellaris/Workspace/linux/modules/sworndisk/dm-sworndisk.o;  echo; } > /home/bellaris/Workspace/linux/modules/sworndisk/dm-sworndisk.mod
