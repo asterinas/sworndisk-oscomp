@@ -46,7 +46,7 @@ SwornDisk的安全性高于Linux内核中现有各种文件I/O（如[eCryptFS](h
 
 ## 项目特色
 
-## 基于日志结构的创新设计
+### 基于日志结构的创新设计
 
 ![图1. SwornDisk的威胁模型](docs/assets/readme_design_overview.png)
 **图2. SwornDisk更新一个数据块（以D2为例）的开销远小于传统方案**
