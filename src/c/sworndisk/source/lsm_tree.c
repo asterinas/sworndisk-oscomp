@@ -373,7 +373,7 @@ bad:
 }
 
 // block index table file implementation
-struct entry __entry(uint32_t key, void* val) {
+struct entry __entry(memtable_key_t key, void* val) {
     struct entry entry = {
         .key = key,
         .val = val
@@ -449,9 +449,9 @@ int bit_file_search(struct lsm_file* lsm_file, uint32_t key, void* val) {
     if (!bloom_filter_contains(this->filter, &key, sizeof(uint32_t)))
         return -ENODATA;
 
-    read_lock(&this->lock);
+    down_read(&this->lock);
     err = bit_leaf_search(&this->cached_leaf, key, val);
-    read_unlock(&this->lock);
+    up_read(&this->lock);
     if (!err) 
         return 0;
 
@@ -459,9 +459,9 @@ int bit_file_search(struct lsm_file* lsm_file, uint32_t key, void* val) {
     if (err)
         return err;
 
-    write_lock(&this->lock);
+    down_write(&this->lock);
     this->cached_leaf = leaf;
-    write_unlock(&this->lock);
+    up_write(&this->lock);
     return bit_leaf_search(&leaf, key, val);
 }
 
@@ -612,7 +612,7 @@ int bit_file_init(struct bit_file* this, struct file* file, loff_t root, size_t 
     this->last_key = last_key;
     memcpy(this->root_key, root_key, AES_GCM_KEY_SIZE);
     memcpy(this->root_iv, root_iv, AES_GCM_IV_SIZE);
-    rwlock_init(&this->lock);
+    init_rwsem(&this->lock);
     this->cached_leaf.nr_record = 0;
     this->filter_begin = filter_begin;
     this->filter = bit_bloom_filter_create();
@@ -1156,7 +1156,7 @@ int lsm_tree_minor_compaction(struct lsm_tree* this) {
     size_t fd;
     struct lsm_file* file;
     struct lsm_file_builder* builder;
-    struct memtable_rbnode* memtable_rbnode;
+    struct memtable_entry* entry;
     struct list_head entries;
 
     if (this->levels[0]->is_full(this->levels[0]))
@@ -1166,8 +1166,9 @@ int lsm_tree_minor_compaction(struct lsm_tree* this) {
     this->catalogue->alloc_file(this->catalogue, &fd);
     builder = this->levels[0]->get_builder(this->levels[0], this->file, this->catalogue->start + fd * this->catalogue->file_size, fd, 0, this->catalogue->get_next_version(this->catalogue));
 
-    list_for_each_entry(memtable_rbnode, &entries, list) 
-        builder->add_entry(builder, (struct entry*)memtable_rbnode);
+    list_for_each_entry(entry, &entries, list) {
+        builder->add_entry(builder, (struct entry*)entry);
+    }
 
     file = builder->complete(builder);
     this->catalogue->set_file_stats(this->catalogue, file->id, file->get_stats(file));
@@ -1211,7 +1212,7 @@ int lsm_tree_search(struct lsm_tree* this, uint32_t key, void* val) {
 void lsm_tree_put(struct lsm_tree* this, uint32_t key, void* val) {
     struct record* record;
 
-    record = this->memtable->put(this->memtable, key, val);
+    record = this->memtable->put(this->memtable, key, val, record_destroy);
     if (record)
         record_destroy(record);
     // this->cache->put(this->cache, key, record_copy(val), record_destroy);
@@ -1255,7 +1256,7 @@ int lsm_tree_init(struct lsm_tree* this, const char* filename, struct lsm_catalo
     }
 
     this->catalogue = catalogue;
-    this->memtable = rbtree_memtable_create(DEFAULT_MEMTABLE_CAPACITY);
+    this->memtable = rbtree_memtable_create();
     this->levels = kzalloc(catalogue->nr_disk_level * sizeof(struct lsm_level*), GFP_KERNEL);
     if (!this->levels) {
         err = -ENOMEM;
