@@ -60,7 +60,7 @@
 
 - Device Mapper主要分为用户空间部分和内核空间部分。用户空间相关部分主要负责配置具体的策略和控制逻辑，比如逻辑设备和哪些物理设备建立映射，怎么建立这些映射关系等。
 
-![](../assets/device_mapper.png)
+![](../assets/device_mapper.PNG)
 
 - 内核中主要提供完成这些用户空间策略所需要的机制，负责具体过滤和重定向 IO 请求。通过不同的驱动插件，转发 IO 请求至目的设备上。
 
@@ -94,7 +94,7 @@ config DM_SWORNDISK_TEST
 
 - 通常在内核源码的根目录使用 make menuconfig 调整编译配置
 
-![](../assets/menuconfig.png)
+![](../assets/menuconfig.PNG)
 
 - SwornDisk 依赖 BLK_DEV_DM 选项，其必须先被 Enable 才能选中 SwornDisk
 
@@ -167,7 +167,7 @@ $ make scripts
 
 - 编辑.config文件，
 
-![](../assets/config_file.png)
+![](../assets/config_file.PNG)
 
 找到 CONFIG_SYSTEM_TRUSTED_KEYS，将值置空；
 
