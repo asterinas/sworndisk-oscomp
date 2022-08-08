@@ -1,0 +1,44 @@
+\clearpage
+
+\section{已知局限}
+
+\subsection{SwornDisk Linux Rust 实现的局限}
+
+SwornDisk Rust 目前实现的功能仍然是不完整的，仍未完成的功能有：
+
+\begin{itemize}[itemsep=2pt,topsep=0pt,parsep=0pt]
+  \item 垃圾回收 (segment cleaning)
+  \item 日志
+  \item Checkpoint 数据加密
+  \item multi logging head
+  \item thread logging
+\end{itemize}
+
+同时，SwornDisk 仍未经过性能调优，目前比较突出的问题和可能的原因是：
+
+\begin{itemize}[itemsep=2pt,topsep=0pt,parsep=0pt]
+  \item 顺序读的性能不符合预期（较低），分析问题出现在从磁盘中读取块花费的时间比较长
+\end{itemize}
+
+此外可能还存在若干未发现的缺陷。
+
+\subsection{工程方案上的局限}
+
+尽管目前初步验证了使用 Rust 实现 Linux 内核模块的可行性，但仍然具有很多局限性。例如：
+
+\begin{itemize}
+  \item 尽管 rust-for-linux 提供了使用 Rust 编写 Linux 内核模块的模式，但由于现阶段只提供了 “使用 rustc 编译 .rs 文件” 这种程度的支持，不支持使用 cargo 组织工程，对编写 SwornDisk 这样较复杂的内核模块（尤其是在我们还需要向 rust-for-linux 补充能力的情况下）很不友好。
+  \item 我们在实现 SwornDisk Linux Rust 的时候尝试引入了 cargo 来组织工程，使用 cargo 的 workspace 来管理多个 crate，实现了分别编译多个依赖 crate 并生成一个目标文件的功能。但这并不代表着可以在其中随意引入第三方 crate，主要原因如下：
+  \begin{itemize}
+    \item 内核模块不能依赖标准库 (std)
+    \item rust-for-linux 对 Rust 语言的核心能力支持不完整，如其只提供 alloc, core 和 kernel 三个 crate，同时 alloc crate 提供的数据结构也是不完整的（例如没有 LinkedList）
+    \item 在 rust-for-linux 中，如果尝试在堆上分配数据（如创建 Vec, Box），都需要使用类似 \mintinline{rust}{try_new()}, \mintinline{rust}{try_push()} 这样返回 \mintinline{text}{Result<T>} 的 API 来创建、分配空间，而不能直接使用 \mintinline{text}{new()} 等创建。这些限制会阻碍我们直接使用开源的 crate.
+  \end{itemize}
+  \item 使用 Rust 编写的 Linux 内核模块，目前只能在同样具有 Rust 支持的 Linux 内核上编译、运行
+  \begin{itemize}
+    \item 我们尝试过在具有 Rust 支持的内核上编译产生 .ko，复制到没有 Rust 支持的内核加载，会由于内核的 version magic 不同，导致无法加载。
+    \item 如果我们跳过对内核模块的 version magic 检查，直接加载 .ko，会由于找不到 Rust 的 alloc, core 和 rust-for-linux 提供的 kernel crate 中方法的符号，无法加载（alloc, core, kernel 是被链接到具有 Rust 支持的内核中的）。
+    \item 尽管我们手动将 alloc, core, kernel 这些 crate 编译出的 .o 文件合并到内核模块的 .o 中，参与最终内核模块的生成；但仍然在其它机器上会找不到部分 Linux 内核中的函数的符号（系 kernel crate 使用的 binding）。
+    \item 综上，我们目前可以认为，在没有 Rust 支持的内核上加载 Rust 编写的内核模块较难以实现，而为了加载模块必须重新编译具有 Rust 支持的内核的成本也很高。
+  \end{itemize}
+\end{itemize}

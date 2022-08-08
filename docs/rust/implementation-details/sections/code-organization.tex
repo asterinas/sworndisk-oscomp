@@ -1,0 +1,62 @@
+\section{代码组织}
+
+\subsection{代码目录结构}
+
+\href{https://github.com/occlum/sworndisk-linux-rs}{sworndisk-linux-rs} 仓库包含 \href{https://github.com/Rust-for-Linux/linux}{rust-for-linux} 的完整代码和 \href{https://github.com/occlum/sworndisk-linux-rs/tree/rust/modules/sworndisk}{SwornDisk 内核模块}代码，后者位于 modules/sworndisk 目录下：
+
+\begin{minted}{shell}
+  |- .cargo
+  |   |- config.toml     # 项目 Cargo 配置文件，主要指定了使用 rustc 时需要附加的编译参数
+  |- deps                # 项目依赖的 crates 目录
+  |   |- cmwq            # Linux 工作队列 (CMWQ) 封装
+  |   |- crypto          # Linux 内核加密 API 封装
+  |   |- device-mapper   # Linux 块 I/O  (bio) 与 Device Mapper 框架封装
+  |- dm-sworndisk        # SwornDisk Device Mapper 内核模块源码目录
+  |   |- Cargo.toml
+  |   |- src
+  |       |- constant.rs      # 定义 SwornDisk 常量，如块、段大小等
+  |       |- context.rs       # 定义用于储存 SwornDisk 上下文的结构，如各个段的实例
+  |       |- handler.rs       # 定义处理 Device Mapper 事件 (ctr, dtr, map) 的方法
+  |       |- lib.rs           # SwornDisk 内核模块入口 (entry)
+  |       |- prelude.rs
+  |       |- regions              # 磁盘布局区域实现
+  |       |   |- checkpoint       # Checkpoint 区域
+  |       |   |   |- bitc.rs      # BIT Category
+  |       |   |   |- dst.rs       # Data Segment Table
+  |       |   |   |- mod.rs     
+  |       |   |   |- svt.rs       # Segment Validity Table
+  |       |   |- data             # 数据段区域
+  |       |   |   |- mod.rs
+  |       |   |   |- segment.rs
+  |       |   |- index            # 索引段区域
+  |       |   |   |- bit.rs       # Block Index Table (BIT) 实现
+  |       |   |   |- memtable.rs  # MemTable 实现
+  |       |   |   |- mod.rs
+  |       |   |   |- record.rs    # Record 结构
+  |       |   |   |- segment.rs   # 索引段结构实现
+  |       |   |- mod.rs
+  |       |   |- superblock.rs    # 超级块
+  |       |- types.rs         # 类型定义
+  |       |- unittest.rs      # 单元测试
+  |       |- utils            # 数据结构和工具函数
+  |       |   |- bitmap.rs          # BitMap
+  |       |   |- debug_ignore.rs    # debug_ignore crate 实现
+  |       |   |- linked_list.rs     # Rust LinkedList 实现
+  |       |   |- lru.rs             # LRU 缓存实现
+  |       |   |- mod.rs
+  |       |   |- traits.rs          # 需要的 traits 定义 (Serialize, Deserialze..)
+  |       |- workers
+  |           |- compaction.rs      # Major Compaction 逻辑
+  |           |- io.rs              # 处理 I/O 请求
+  |           |- mod.rs
+  |-- Kbuild
+  |-- Makefile
+  |-- README.md
+  |-- scripts
+      |-- fio.conf            # fio 性能测试配置文件
+      |-- generate_cmd.sh     # 生成编译时所需的 cmd 文件
+      |-- insmod.sh           # 加载内核模块、创建 SwornDisk 示例命令
+      |-- restore.sh          # 卸载内核模块、卸载 SwornDisk 示例命令
+\end{minted}
+
+\input{sections/code-organization-rust-for-linux}

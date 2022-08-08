@@ -58,10 +58,16 @@ pub const FLUSH: u32 = 2;
 pub const BIT_MAX_LEVEL: usize = 5;
 
 /// Max levels of dsLSM-tree
-pub const LSM_TREE_MAX_LEVEL: usize = 5;
+pub const LSM_TREE_MAX_LEVEL: usize = 3;
 
 /// Max record number of MemTable
 pub const MEMTABLE_THRESHOLD: usize = 65536;
 
 /// Max size of IndirectBlock or LeafBlock LRU Cache
 pub const LRU_CACHE_MAX_SIZE: usize = 4096;
+
+/// Max BIT number of a compaction job
+pub const MAX_COMPACTION_NUMBER: usize = 6;
+
+/// Max workers number
+pub const MAX_WORKERS: usize = 6;

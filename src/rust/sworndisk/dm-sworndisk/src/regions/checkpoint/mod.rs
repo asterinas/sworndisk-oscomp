@@ -64,7 +64,7 @@ impl Checkpoint {
     pub fn write_to_disk(
         &self,
         bdev: &BlockDevice,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         checkpoint_hba: u64,
     ) -> Result {
         let current_data_segment =
@@ -135,7 +135,7 @@ impl Checkpoint {
 
     pub fn read_from_disk(
         bdev: &BlockDevice,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         checkpoint_hba: u64,
     ) -> Result<Self> {
         // read metainfo

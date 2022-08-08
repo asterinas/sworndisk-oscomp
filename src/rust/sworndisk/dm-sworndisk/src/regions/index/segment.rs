@@ -21,7 +21,7 @@ impl IndexSegment {
         data: &[u8],
         len: usize,
         aead: &Pin<Box<Aead>>,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         _checkpoint: &mut Checkpoint,
         bdev: &BlockDevice,
     ) -> Result<Record> {

@@ -3,7 +3,7 @@
 version = 3
 
 [[package]]
-name = "async-work"
+name = "cmwq"
 version = "0.1.0"
 
 [[package]]
@@ -18,7 +18,7 @@ version = "0.1.0"
 name = "dm-sworndisk"
 version = "0.1.0"
 dependencies = [
- "async-work",
+ "cmwq",
  "crypto",
  "device-mapper",
 ]

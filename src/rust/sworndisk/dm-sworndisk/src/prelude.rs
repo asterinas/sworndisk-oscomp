@@ -2,7 +2,7 @@
 
 pub use alloc::{boxed::Box, vec::Vec};
 
-pub use async_work::{WorkFuncTrait, WorkQueue, WorkStruct};
+pub use cmwq::{WorkFuncTrait, WorkQueue, WorkStruct};
 
 pub use core::{cmp, fmt, fmt::Debug, mem, pin::Pin, ptr, str};
 

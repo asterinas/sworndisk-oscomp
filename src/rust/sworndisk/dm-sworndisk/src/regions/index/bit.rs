@@ -1,5 +1,6 @@
 use super::{memtable::MemTable, record::Record, segment::IndexSegment};
 use crate::{prelude::*, regions::Checkpoint, utils::*};
+use core::marker::PhantomData;
 
 /// # SwornDisk Linux Rust: BIT Implementation Design
 ///
@@ -251,6 +252,10 @@ impl LeafBlock {
     }
 
     pub fn push(&mut self, record: LeafRecord) {
+        if self.count > 0 {
+            assert_eq!(self.children[self.count - 1].lba <= record.lba, true);
+        }
+
         self.children.try_push(record).unwrap();
         self.count += 1;
 
@@ -274,6 +279,14 @@ impl IndirectBlock {
     }
 
     pub fn push(&mut self, record: IndirectRecord) {
+        if self.count > 0 {
+            assert_eq!(
+                self.children[self.count - 1].lba_range.1 <= record.lba_range.0,
+                true
+            );
+            assert_eq!(record.lba_range.0 <= record.lba_range.1, true);
+        }
+
         self.children.try_push(record).unwrap();
         self.count += 1;
 
@@ -291,14 +304,26 @@ pub struct BIT {
 
     /// max level of BIT
     pub level: usize,
+
+    /// element number of BIT
+    pub size: usize,
 }
 
 impl BIT {
+    /// return the size of BIT
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn get_lba_range(&self) -> (u64, u64) {
+        self.root.get_lba_range()
+    }
+
     /// Create BIT from a MemTable
     pub fn from_memtable(
         memtable: &MemTable,
         aead: &Pin<Box<Aead>>,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         checkpoint: &mut Checkpoint,
         meta_bdev: &BlockDevice,
         index_seg: &mut IndexSegment,
@@ -322,8 +347,6 @@ impl BIT {
         // move elements from MemTable to BIT
         let mut index = 0;
         let size = memtable.size();
-
-        pr_info!("MemTable total size: {}", size);
 
         for (lba, record) in memtable.iter() {
             leaf.push(LeafRecord {
@@ -377,6 +400,134 @@ impl BIT {
         mem::swap(&mut root_block, &mut indirect[0]);
 
         Ok(Self {
+            size,
+            root: root_block,
+            record: root_record,
+            level: max_level,
+        })
+    }
+
+    /// Compact some BITs of level `i` into a new BIT of level `i+1`
+    pub fn from_compaction(
+        bits: &Vec<BIT>,
+        aead: &Pin<Box<Aead>>,
+        client: &DmIoClient,
+        checkpoint: &mut Checkpoint,
+        meta_bdev: &BlockDevice,
+        index_seg: &mut IndexSegment,
+    ) -> Result<Self> {
+        // create iterators for the BITs will be compacted,
+        // then compute the max-level and max-size of BIT.
+        let mut bit_iterators = Vec::new();
+        let mut max_size = 0;
+        for bit in bits {
+            max_size += bit.size();
+            bit_iterators.try_push(bit.iter(aead, meta_bdev, client)?)?;
+        }
+
+        let mut max_level = 2;
+        let mut tmp = max_size / LEAF_BLOCK_CHILDREN / INDIRECT_BLOCK_CHILDREN;
+        while tmp > 0 {
+            tmp /= INDIRECT_BLOCK_CHILDREN;
+            max_level += 1;
+        }
+
+        // create a new block buffer to store the new BIT
+        let mut leaf = Box::try_new(LeafBlock::default())?;
+        let mut indirect = Box::try_new([(); BIT_MAX_LEVEL].map(|_| IndirectBlock::default()))?;
+
+        // iterate all the BITs and find the latest node
+        // create a node array that holds current iterator nodes
+        let mut nodes = Vec::new();
+        for iterator in bit_iterators.iter_mut() {
+            nodes.try_push(iterator.next()?)?;
+        }
+
+        let total_index = bits.len();
+        let mut duplicates = Vec::new();
+        duplicates.try_resize(total_index, 0usize)?;
+
+        let mut real_size = 0;
+
+        // find the node to be compaction
+        loop {
+            let mut baseline: Option<LeafRecord> = None;
+            let mut duplicate_number = 1;
+            for i in 0..total_index {
+                if nodes[i].is_some() {
+                    let node = nodes[i].as_ref().unwrap();
+                    if baseline.is_none() || node.lba < baseline.as_ref().unwrap().lba {
+                        baseline = nodes[i];
+                        duplicates[0] = i;
+                        duplicate_number = 1;
+                    } else if node.lba == baseline.as_ref().unwrap().lba {
+                        baseline = nodes[i];
+                        duplicates[duplicate_number] = i;
+                        duplicate_number += 1;
+                    }
+                }
+            }
+
+            if baseline.is_some() {
+                real_size += 1;
+                leaf.push(baseline.unwrap());
+            }
+
+            if leaf.is_full() || baseline.is_none() {
+                let lba_range = leaf.get_lba_range();
+
+                let record = Self::writeback_block(
+                    leaf.as_ref(),
+                    aead,
+                    client,
+                    checkpoint,
+                    meta_bdev,
+                    index_seg,
+                )?;
+
+                indirect[max_level - 2].push(IndirectRecord { lba_range, record });
+
+                Self::pushup_indirect_block(
+                    &mut indirect,
+                    max_level,
+                    false, // index < size
+                    aead,
+                    client,
+                    checkpoint,
+                    meta_bdev,
+                    index_seg,
+                )?;
+
+                *leaf = LeafBlock::default();
+            }
+
+            if baseline.is_none() {
+                break;
+            }
+
+            for i in 0..duplicate_number {
+                let index = duplicates[i];
+                nodes[index] = bit_iterators[index].next()?;
+            }
+        }
+
+        let root_record = Self::pushup_indirect_block(
+            &mut indirect,
+            max_level,
+            true,
+            aead,
+            client,
+            checkpoint,
+            meta_bdev,
+            index_seg,
+        )?
+        .unwrap();
+
+        let mut root_block = IndirectBlock::default();
+        mem::swap(&mut root_block, &mut indirect[0]);
+
+        Ok(Self {
+            size: real_size,
             root: root_block,
             record: root_record,
             level: max_level,
@@ -388,7 +539,7 @@ impl BIT {
         lba: u64,
         aead: &Pin<Box<Aead>>,
         bdev: &BlockDevice,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         indirect_block_cache: &mut LruCache<u64, IndirectBlock>,
         leaf_block_cache: &mut LruCache<u64, LeafBlock>,
     ) -> Result<Option<Record>> {
@@ -514,7 +665,7 @@ impl BIT {
         max_level: usize,
         write_all: bool,
         aead: &Pin<Box<Aead>>,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         checkpoint: &mut Checkpoint,
         meta_bdev: &BlockDevice,
         index_seg: &mut IndexSegment,
@@ -528,6 +679,9 @@ impl BIT {
                 }
 
                 let lba_range = indirect[level].get_lba_range();
+
+                // pr_info!("indirect level {} lba_range {:?}", level, lba_range);
+
                 let record = Self::writeback_block(
                     &indirect[level],
                     aead,
@@ -552,11 +706,11 @@ impl BIT {
     }
 
     /// Read a struct of size BLOCK_SIZE. The struct should be deserializable.  
-    fn read_block<T: Sized + Deserialize + Debug + Clone>(
+    pub fn read_block<T: Sized + Deserialize + Debug + Clone>(
         record: Record,
         aead: &Pin<Box<Aead>>,
         bdev: &BlockDevice,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         cache: &mut LruCache<u64, T>,
     ) -> Result<T> {
         match cache.get(&record.hba) {
@@ -597,11 +751,55 @@ impl BIT {
         Ok(result)
     }
 
+    /// Read a block directly from meta device without accessing cache
+    pub fn read_block_directly<T: Sized + Deserialize + Debug + Clone>(
+        record: Record,
+        aead: &Pin<Box<Aead>>,
+        bdev: &BlockDevice,
+        client: &DmIoClient,
+    ) -> Result<T> {
+        let mut block = Vec::new();
+        block.try_resize(BLOCK_SIZE as usize, 0u8)?;
+
+        let mut region = DmIoRegion::new(&bdev, record.hba, BLOCK_SECTORS)?;
+        let mut io_req = DmIoRequest::with_kernel_memory(
+            READ as i32,
+            READ as i32,
+            block.as_mut_ptr() as *mut c_void,
+            0,
+            client,
+        );
+        io_req.submit(&mut region);
+
+        unsafe {
+            aead.as_ref().decrypt_in_place(
+                &slice_to_vec::<{ SWORNDISK_KEY_LENGTH }>(&record.key)?,
+                &mut slice_to_vec::<{ SWORNDISK_MAC_LENGTH }>(&record.mac)?,
+                &mut slice_to_vec::<{ SWORNDISK_NONCE_LENGTH }>(&record.nonce)?,
+                &mut block,
+                BLOCK_SIZE as usize,
+            )?
+        };
+
+        let result = T::deserialize(&block)?;
+
+        Ok(result)
+    }
+
+    pub fn iter<'a>(
+        &'a self,
+        aead: &'a Pin<Box<Aead>>,
+        bdev: &'a BlockDevice,
+        client: &'a DmIoClient,
+    ) -> Result<BITIterator<'a>> {
+        Ok(BITIterator::new(self, aead, bdev, client)?)
+    }
+
     /// Write a Block which implemented Serialize trait to disk
     fn writeback_block<T: Sized + Serialize>(
         block: &T,
         aead: &Pin<Box<Aead>>,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         checkpoint: &mut Checkpoint,
         meta_bdev: &BlockDevice,
         index_seg: &mut IndexSegment,
@@ -617,5 +815,149 @@ impl BIT {
         )?;
 
         Ok(record)
+    }
+}
+
+pub struct BITIterator<'a> {
+    _bit: PhantomData<&'a BIT>,
+
+    aead: &'a Pin<Box<Aead>>,
+    bdev: &'a BlockDevice,
+    client: &'a DmIoClient,
+
+    level: usize,
+    total_index: usize,
+    has_next: bool,
+    index: [usize; BIT_MAX_LEVEL],
+    block_stack: Box<[IndirectBlock; BIT_MAX_LEVEL]>,
+    leaf_block: Box<LeafBlock>,
+}
+
+impl<'a> BITIterator<'a> {
+    /// Create a new BIT iterator
+    pub fn new(
+        bit: &'a BIT,
+        aead: &'a Pin<Box<Aead>>,
+        bdev: &'a BlockDevice,
+        client: &'a DmIoClient,
+    ) -> Result<Self> {
+        let level = bit.level;
+
+        // block_stack, leaf_block and index array maintained the state of a iterator.
+        // Each time we iterate the iterator to get next element, the iterator first update the state of itself to
+        // ensure that block_stack and leaf_block are valid.
+        let mut index = [1; BIT_MAX_LEVEL];
+        let mut block_stack = Box::try_new([(); BIT_MAX_LEVEL].map(|_| IndirectBlock::default()))?;
+        let mut leaf_block = Box::try_new(LeafBlock::default())?;
+
+        index[level - 1] = 0;
+
+        // read the first node of each level
+        block_stack[0] = bit.root.clone();
+        for i in 1..level - 1 {
+            if block_stack[i - 1].count <= 0 {
+                pr_warn!("Cannot create BITIterator: block is empty");
+                return Err(EINVAL);
+            }
+
+            // read the first element
+            block_stack[i] = BIT::read_block_directly::<IndirectBlock>(
+                block_stack[i - 1].children[0].record,
+                aead,
+                bdev,
+                client,
+            )?;
+
+            // pr_info!("block level {} lba_range: {:?}", i, block_stack[i].get_lba_range());
+        }
+
+        if block_stack[level - 2].count <= 0 {
+            pr_warn!("Cannot create BITIterator: block is empty");
+            return Err(EINVAL);
+        }
+
+        *leaf_block = BIT::read_block_directly::<LeafBlock>(
+            block_stack[level - 2].children[0].record,
+            aead,
+            bdev,
+            client,
+        )?;
+
+        Ok(Self {
+            level,
+            index,
+            block_stack,
+            leaf_block,
+
+            aead,
+            bdev,
+            client,
+
+            _bit: PhantomData,
+            total_index: 0,
+            has_next: true,
+        })
+    }
+
+    /// Update the block stack
+    pub fn update_block_stack(&mut self) -> Result {
+        // check LeafBlock has next element
+        if self.index[self.level - 1] >= self.leaf_block.count {
+            if !self.has_next {
+                return Ok(());
+            }
+
+            let mut level = self.level - 1;
+            let next_leaf_block = BIT::read_block_directly::<LeafBlock>(
+                self.block_stack[level - 1].children[self.index[level - 1]].record,
+                self.aead,
+                self.bdev,
+                self.client,
+            )?;
+
+            *(self.leaf_block) = next_leaf_block;
+            self.index[level] = 0;
+            self.index[level - 1] += 1;
+            level -= 1;
+
+            // recursively update the block stack and index array
+            while level > 0 && self.index[level] >= self.block_stack[level].count {
+                if level - 1 == 0 && self.index[0] >= self.block_stack[0].count {
+                    self.has_next = false;
+                    return Ok(());
+                }
+                let next_block = BIT::read_block_directly::<IndirectBlock>(
+                    self.block_stack[level - 1].children[self.index[level - 1]].record,
+                    self.aead,
+                    self.bdev,
+                    self.client,
+                )?;
+                self.block_stack[level] = next_block;
+                self.index[level] = 0;
+                self.index[level - 1] += 1;
+                level -= 1;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn has_next(&self) -> bool {
+        self.has_next || self.index[self.level - 1] < self.leaf_block.count
+    }
+
+    /// Iterate next element
+    pub fn next(&mut self) -> Result<Option<LeafRecord>> {
+        self.update_block_stack()?;
+
+        if self.has_next() {
+            let item = self.leaf_block.children[self.index[self.level - 1]];
+            self.index[self.level - 1] += 1;
+            self.total_index += 1;
+
+            Ok(Some(item))
+        } else {
+            Ok(None)
+        }
     }
 }
