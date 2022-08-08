@@ -7,11 +7,14 @@ use crate::{
     regions::{
         Checkpoint, DataSegment, IndexSegment, IndirectBlock, LeafBlock, MemTable, SuperBlock, BIT,
     },
-    rw::RwWorker,
     utils::{DebugIgnore, LruCache},
+    workers::{CompactionWorker, IoWorker},
 };
 
-use kernel::sync::Mutex;
+use kernel::sync::{Mutex, RwSemaphore};
+
+/// global SwornDisk context
+pub static mut CONTEXT: Option<&mut SwornDiskContext> = None;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -19,7 +22,7 @@ pub struct SwornDiskContext {
     /// AEAD (Authenticated Encryption with Associated Data) crypto handle
     pub aead: Pin<Box<Aead>>,
     /// BIO request queues pending to be handled
-    pub bio_queue: LinkedList<Bio>,
+    pub bio_queue: DebugIgnore<Pin<Box<Mutex<LinkedList<Bio>>>>>,
     /// Device mapper block manager handle
     pub block_manager: DmBlockManager,
     /// SwornDisk checkpoint region
@@ -37,7 +40,7 @@ pub struct SwornDiskContext {
     /// LeafBlock LRU cache (HBA -> LeafBlock)
     pub leaf_block_cache: LruCache<u64, LeafBlock>,
     /// Context MutexLock
-    pub lock: DebugIgnore<Pin<Box<Mutex<()>>>>,
+    pub lock: DebugIgnore<Pin<Box<RwSemaphore<()>>>>,
     // / Real block device for storing meta info (superblocks, journal, checkpoint...)
     pub meta_dev: DmDev,
     /// Level 0 (in-memory) block index tree
@@ -48,14 +51,20 @@ pub struct SwornDiskContext {
     pub superblock: SuperBlock,
     /// Async work queue
     pub work_queue: Box<WorkQueue>,
+
     /// Worker for handle bio requests
-    pub rw_worker: WorkStruct,
+    pub rw_worker: [WorkStruct; MAX_WORKERS],
+    /// Worker for handle compaction
+    pub compaction_worker: WorkStruct,
 }
 
 impl SwornDiskContext {
     /// Initialize async workers that will make use of any member in SwornDiskContext
     pub fn init_workers(&mut self) {
-        self.rw_worker.init::<RwWorker>();
+        for worker in &mut self.rw_worker {
+            worker.init::<IoWorker>();
+        }
+        self.compaction_worker.init::<CompactionWorker>();
     }
 
     /// Flush SwornDisk
@@ -78,7 +87,7 @@ impl SwornDiskContext {
             &self.meta_dev.block_device()?,
             &mut self.index_seg,
         )?;
-        self.checkpoint.bit_category.add_bit(bit)?;
+        self.checkpoint.bit_category.add_bit(bit, 0)?;
 
         // write checkpoint
         let checkpoint_hba = self.superblock.checkpoint_region / SECTOR_SIZE;

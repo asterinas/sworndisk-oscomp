@@ -1,0 +1,158 @@
+\clearpage
+\section{编译、运行、测试}
+
+\subsection{编译 rust-for-linux}
+
+参考 \href{https://github.com/Rust-for-Linux/linux/blob/rust/Documentation/rust/quick-start.rst}{rust-for-linux Quick Start 文档}，编译具有 Rust 支持的内核。
+
+根据使用的发行版不同，编译的方法也可能不同。以 Arch Linux 为例，首先需要安装依赖：
+
+\begin{minted}{bash}
+$ sudo pacman -S base-devel clang lld python3 llvm bc cpio
+\end{minted}
+
+安装 rustup 工具链：
+
+\begin{minted}{bash}
+$ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+\end{minted}
+
+克隆 rust-for-linux：
+
+\begin{minted}{bash}
+$ git clone git@github.com:occlum/sworndisk-linux-rs.git linux
+$ cd linux
+\end{minted}
+
+根据 rust-for-linux 的要求设置 Rust 环境，安装必要的组件：
+
+\begin{minted}{bash}
+$ rustup override set $(scripts/min-tool-version.sh rustc)
+$ rustup component add rust-src
+$ cargo install --locked --version $(scripts/min-tool-version.sh bindgen) bindgen
+
+$ rustup component add rustfmt
+$ rustup component add clippy
+\end{minted}
+
+\textbf{PS: 由于 rust-for-linux 项目强制使用 nightly 版本的工具链，SwornDisk 使用的 Rust 版本为 rustc 1.60.0-nightly (9ad5d82f8 2022-01-18)，在安装 Rust 工具链时，请务必手动切换到此版本：}
+
+\begin{minted}{bash}
+$ rustup toolchain install nightly-2022-01-18
+\end{minted}
+
+导出当前系统的内核配置：
+
+\begin{minted}{bash}
+$ zcat /proc/config.gz > .config
+\end{minted}
+
+编辑 \mintinline{text}{.config} 启用以下选项：
+
+\begin{minted}{text}
+CONFIG_RUST_IS_AVAILABLE=y 
+CONFIG_RUST=y 
+CONFIG_DM_PERSISTENT_DATA=y 
+CONFIG_DM_BUFIO=y 
+CONFIG_LIBCRC32C=y 
+CONFIG_BLK_DEV_LOOP=y 
+CONFIG_BLK_DEV_DM=y 
+CONFIG_BLK_DEV_LOOP_MIN_COUNT=8
+\end{minted}
+
+\textbf{PS: 部分选项可能由于依赖或其它各种原因，在 \mintinline{text}{.config} 中无法配置，此时可以修改 \mintinline{text}{include/config/auto.conf} 文件。}
+
+编译内核：
+
+\begin{minted}{bash}
+$ make LLVM=1 -j8
+$ sudo make modules_install
+\end{minted}
+
+参考 \href{https://wiki.archlinux.org/title/Kernel_(%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87)/Traditional_compilation_(%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87)}{Kernel - ArchWiki} 更新 initcpio 和 grub，重启即可。
+
+附：\href{https://kirainmoe.feishu.cn/wiki/wikcnyStut2uUsg0RBWGwtOoaPc}{Ubuntu 下编译 rust-for-linux 的过程记录}供参考。
+
+\subsection{编译 SwornDisk}
+
+SwornDisk Rust 源码位于 \mintinline{text}{modules/sworndisk} 中。
+
+\begin{minted}{bash}
+$ cd modules/sworndisk
+$ make clean
+$ make
+\end{minted}
+
+若一切正常，应当得到 SwornDisk Linux 内核模块 \mintinline{text}{dm-sworndisk.ko}:
+
+\begin{minted}{bash}
+$ modinfo dm-sworndisk.ko
+
+filename:       /home/bellaris/Workspace/linux/modules/sworndisk/dm-sworndisk.ko
+author:         Occlum Team
+description:    Rust implementation of SwornDisk based on Linux device mapper.
+license:        GPL v2
+vermagic:       5.17.0-rc8-126275-g6b600e79f6e6-dirty SMP preempt mod_unload 
+name:           dm_sworndisk
+retpoline:      Y
+depends:        
+srcversion:     4BAC5027D1352F0DF2B3A7E
+parm:           run_unittest:Run dm-sworndisk kernel module unit test (bool)
+\end{minted}
+
+\subsection{加载并创建 SwornDisk}
+
+首先加载 SwornDisk 内核模块：
+
+\begin{minted}{bash}
+$ sudo insmod dm-sworndisk.ko
+\end{minted}
+
+SwornDisk Linux Rust 需要挂载两个物理设备分区（数据设备、元信息设备），我们用 \mintinline{text}{dd} 创建空磁盘文件，使用 \mintinline{text}{losetup} 挂载为回环设备：
+
+\begin{minted}{bash}
+$ dd if=/dev/null of=~/tmp/disk.img seek=58593750   # 30GB Data
+$ dd if=/dev/null of=~/tmp/meta.img seek=8388608    # 4GB Meta
+$ sudo losetup /dev/loop0 ~/tmp/disk.img
+$ sudo losetup /dev/loop1 ~/tmp/meta.img
+\end{minted}
+
+使用 \mintinline{text}{dmsetup} 创建 SwornDisk Device Mapper 目标设备：
+
+\begin{minted}{bash}
+$ echo -e '0 58593750 sworndisk /dev/loop0 /dev/loop1 0 force' | sudo dmsetup create test-sworndisk
+\end{minted}
+
+命令用法：
+
+\begin{minted}{bash}
+echo -e '0 <size> sworndisk <data_dev> <meta_dev> 0 force' | sudo dmsetup create <name>
+\end{minted}
+
+\begin{itemize}[itemsep=2pt,topsep=0pt,parsep=0pt]
+  \item \mintinline{text}{<size>}: 磁盘扇区数量，扇区大小为 512B
+  \item \mintinline{text}{<data_dev>}: 数据磁盘对应设备文件
+  \item \mintinline{text}{<meta_dev>}: 元数据磁盘对应设备文件
+  \item \mintinline{text}{<format>}: 是否格式化创建磁盘：(force: 强制格式化创建新磁盘, true: 损坏时格式化, false: 不格式化)
+  \item \mintinline{text}{<name>}: 磁盘名称
+\end{itemize}
+
+此时成功创建了一个名为 \mintinline{text}{test-sworndisk} 的虚拟块设备，位于 \mintinline{text}{/dev/mapper/test-sworndisk}.
+
+\subsection{测试}
+
+\subsubsection{fio 性能测试}
+
+\mintinline{text}{scripts/fio.conf} 中定义了 fio 测试的配置。
+
+\begin{minted}{bash}
+$ sudo fio scripts/fio.conf
+\end{minted}
+
+\subsubsection{单元测试}
+
+由于使用 Rust 编写的 Linux 内核模块无法直接使用 \mintinline{text}{cargo test} 进行单元测试，因此单独写了一个模块 \mintinline{text}{unitest} 实现单元测试。在加载内核模块时带参数 \mintinline{text}{run_unittest=true} 即可。
+
+\begin{minted}{bash}
+$ sudo insmod dm-sworndisk.ko run_unittest=true
+\end{minted}

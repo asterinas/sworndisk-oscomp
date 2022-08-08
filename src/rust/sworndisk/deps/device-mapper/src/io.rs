@@ -35,7 +35,7 @@ impl DmIoClient {
     }
 
     /// Get the raw mutable pointer reference of `struct dm_io_client`
-    pub unsafe fn raw(&mut self) -> *mut bindings::dm_io_client {
+    pub unsafe fn raw(&self) -> *mut bindings::dm_io_client {
         self.0
     }
 }
@@ -57,7 +57,7 @@ impl DmIoRequest {
         req_op_flags: i32,
         buffer: *mut c_types::c_void,
         offset: u32,
-        client: &'a mut DmIoClient,
+        client: &'a DmIoClient,
     ) -> Self {
         let request = bindings::dm_io_request {
             bi_op: req_op,

@@ -1,0 +1,54 @@
+\documentclass{article}
+
+\usepackage{fontspec}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage[dvipsnames, svgnames, x11names]{xcolor}
+\usepackage{fontspec}
+\usepackage{mathtools}
+\usepackage{verbatim} 
+\usepackage{amsthm}
+\usepackage{fancyhdr}
+\usepackage{minted}
+\usepackage{verbatim}
+\usepackage{pdfpages}
+\usepackage{setspace}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{indentfirst}
+\usepackage[colorlinks=true]{hyperref}
+\usepackage[BoldFont,SlantFont,CJKchecksingle]{xeCJK}
+\usepackage[utf8x]{inputenc}
+
+\linespread{1.5}
+\geometry{left=2cm,right=2cm,top=3cm,bottom=3cm}
+
+\usemintedstyle{colorful}
+\setminted[c++]{linenos, framesep=2mm, baselinestretch=1.0, breaklines, mathescape, bgcolor=LavenderBlush1}
+\setminted[c]{linenos, framesep=2mm, baselinestretch=1.0, breaklines, mathescape, bgcolor=LavenderBlush1}
+\setminted[rust]{linenos, framesep=2mm, baselinestretch=1.0, breaklines, mathescape, bgcolor=LavenderBlush1}
+\setminted[batch]{linenos, framesep=2mm, baselinestretch=1.0, breaklines, mathescape, bgcolor=LavenderBlush1}
+\setminted[bash]{linenos, framesep=2mm, baselinestretch=1.0, breaklines, mathescape, bgcolor=LavenderBlush1}
+\setminted[shell]{linenos, framesep=2mm, baselinestretch=1.0, breaklines, mathescape, bgcolor=LavenderBlush1}
+\setminted[text]{linenos, framesep=2mm, baselinestretch=1.0, breaklines, mathescape, bgcolor=LavenderBlush1}
+
+\title{SwornDisk Linux Rust Documentation}
+\date{\today}
+
+\begin{document}
+  \begin{titlepage}
+  \maketitle
+  \end{titlepage}
+
+  \tableofcontents
+  \clearpage
+
+  \input{sections/code-organization}
+  \input{sections/compile-run-test}
+  \input{sections/core-implementation}
+  \input{sections/known-limits}
+  \input{sections/experience}
+\end{document}

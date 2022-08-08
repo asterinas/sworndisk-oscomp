@@ -21,6 +21,9 @@ cargo-build: dm-sworndisk/src/lib.rs
 	$(LD) -r $$(ls -d $(OUTPUT_DIR)/* | grep '.*[\.o]$$') -o ./$(MODULE_NAME).o
 	cp $(OUTPUT_DIR)/$$(ls $(OUTPUT_DIR) | grep '$(CRATE_NAME).*[\.d]$$') ./.$(MODULE_NAME).d
 
+doc:
+	RUST_MODFILE=$(PWD) cargo doc
+
 clean:
 	cargo clean
 	rm -rf .*.cmd .*.d

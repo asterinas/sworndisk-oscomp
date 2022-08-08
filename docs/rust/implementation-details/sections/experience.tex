@@ -1,0 +1,127 @@
+\clearpage
+\section{经验体会}
+
+\subsection{如何往 rust-for-linux 里面加东西}
+
+主要包含以下几步：
+
+\begin{itemize}[itemsep=2pt,topsep=0pt,parsep=0pt]
+  \item 在 \mintinline{text}{rust/kernel/bindings_helper.h} 引入需要的头文件
+  \item make 内核重新生成一下 bindings 文件
+  \item 在 \mintinline{text}{rust/kernel} crate 中使用 \mintinline{rust}{bindings::xxx}
+  \item 或创建新的 crate ，其中声明 \mintinline{rust}{extern crate kernel} 并使用 \mintinline{rust}{kernel::bindings::xxx}
+\end{itemize}
+
+\subsection{使用 Cargo 组织工程}
+
+在 rust-for-linux 中使用 cargo 组织工程，主要需要解决两个问题：
+
+\begin{itemize}[itemsep=2pt,topsep=0pt,parsep=0pt]
+  \item 在 cargo 调用 rustc 编译的时候，需要添加一系列参数。这部分参数通过 \mintinline{text}{.cargo/config.toml} 声明；由于需要引用内核代码树中的文件，需要注意路径。
+  \item cargo 工程类型需要是 rlib, 同时生成的文件需要是 .o 格式的目标文件 (emit=objs)；多个 crate 生成的 .o 文件需要使用 ld.lld 合并成一个 .o 文件。
+  \item 需要写一个 shell 脚本，给生成的 .o 文件创建一个 .cmd 格式的声明文件，声明该模块的依赖路径和源码路径等（参考 \mintinline{text}{dm-sworndisk/scripts/generate_cmd.sh}）。
+  \item 接下来的步骤 (modpost, lto, ...) 交给 Linux Kbuild 完成即可。
+\end{itemize}
+
+\subsection{如何在 Rust 的 SwornDisk 中管理全局变量}
+
+在实现 SwornDisk 的时候免不了需要用到一些全局共享的东西，由于 rust-for-linux 的诸多限制，所以我们不能用 \mintinline{text}{lazy_static} 来声明全局变量（主要原因是它依赖了 spin 这个 crate 模拟并发原语）。要在全局范围内访问一些内容，主要有两种解决方案：
+
+\begin{itemize}[itemsep=2pt,topsep=0pt,parsep=0pt]
+  \item 将值分配在堆上，指针交给某些具有 private 成员的结构体保存。
+  \item 使用 \mintinline{rust}{Box<Option<T>>} 结构 (unsafe).
+\end{itemize}
+
+\clearpage
+\subsection{一些常见的场景的实现}
+
+\subsubsection{如何加解密一个块}
+
+\begin{minted}{rust}
+use crypto::{Aead, get_random_bytes};
+
+let mut aead = Aead::new(c_str!("gcm(aes)"), 0, 0).unwrap();
+
+let key = get_random_bytes(16);         // Vec<u8>
+let mut nonce = get_random_bytes(12);   // Vec<u8>
+let mut plain = get_random_bytes(4096); // Vec<u8>
+
+// 加密
+let (mut cipher, mut mac) = aead.as_ref()
+  .encrypt(&key, &mut nonce, &mut plain,)
+  .unwrap();
+
+// 解密
+let plain = aead.as_ref()
+  .decrypt(&key, &mut mac, &mut nonce, &mut cipher)
+  .unwrap();
+\end{minted}
+
+\subsubsection{如何从硬盘读写一个块}
+
+\begin{minted}{rust}
+// 分配一个块
+let mut block = Vec::new();
+block.try_resize(BLOCK_SIZE as usize, 0u8)?;
+
+// 创建一个 DmIoRegion, 注意大小以扇区为单位
+// DmIoRegion::new(block_device, sector, nr_sectors) -> Result<DmIoRegion>
+let mut region = DmIoRegion::new(&bdev, record.hba, BLOCK_SECTORS)?;
+
+// 创建 Device Mapper I/O 请求
+let mut io_req = DmIoRequest::with_kernel_memory(
+    READ as i32,                   // 写入请求时此处为 WRITE
+    READ as i32,
+    block.as_mut_ptr() as *mut c_void,
+    0,
+    client,                        // DmIoClient
+);
+
+// 提交 IO 请求
+io_req.submit(&mut region);
+\end{minted}
+
+\subsubsection{如何将一个 struct 储存到硬盘上}
+
+由于 rust-for-linux 中不能用标准库，因此也不能用 \mintinline{rust}{io::Read} 和 \mintinline{rust}{io::Write} 这种 trait，此时如何把一个 Rust struct 持久化地保存到硬盘上就成为一个问题。
+
+我们采用的方案是将块二进制序列化，通过实现 \mintinline{rust}{Serialize} 和 \mintinline{rust}{Deserialze} trait 可以将一个 struct 序列化为二进制串（或从二进制串解析出 struct 本身）：
+
+\begin{minted}{rust}
+/// Serailize trait: convert a struct into binary bufferr (Vec<u8>)
+pub trait Serialize {
+    fn serialize(&self) -> Result<Vec<u8>>;
+}
+
+/// Deserialize trait: convert a binary buffer (&Vec<u8>) into a struct
+pub trait Deserialize {
+    fn deserialize(buffer: &[u8]) -> Result<Self>
+    where
+        Self: Sized;
+}
+\end{minted}
+
+PS: 其实我曾经想尝试一下引入 serde, 不过看起来很麻烦，当时安排比较紧没有那么多时间可以尝试。
+
+\subsubsection{如何创建一个异步任务 (worker) 并加入队列中}
+
+\begin{minted}{rust}
+use cmwq::{WorkFuncTrait, WorkQueue, WorkStruct};
+
+struct Worker;
+
+impl WorkFuncTrait for Worker {
+  fn work(_work_struct: *mut bindings::work_struct) -> Result {
+    // do something...
+    // *mut bindings::work_struct can be used for calling `container_of!()`
+  }
+}
+
+let mut work_queue = WorkQueue::new(c_str!("queue"), bindings::WQ_UNBOUND | bindings::WQ_MEM_RECLAIM, 0)?;
+
+let mut worker = WorkStruct::new();
+worker.init::<Worker>();
+
+work_queue.queue_woork(&mut worker);
+
+\end{minted}

@@ -6,7 +6,6 @@
 
 #![feature(const_fn_trait_bound)]
 #![allow(dead_code)]
-// #![allow(warnings)]
 
 extern crate alloc;
 extern crate kernel;
@@ -16,10 +15,10 @@ mod context;
 mod handler;
 mod prelude;
 mod regions;
-mod rw;
 mod types;
 mod unittest;
 mod utils;
+mod workers;
 
 use prelude::*;
 

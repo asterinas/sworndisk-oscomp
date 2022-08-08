@@ -19,6 +19,9 @@ pub struct BITRootMeta {
 
     /// BIT level
     pub level: usize,
+
+    /// element number of BIT
+    pub size: usize,
 }
 
 const BIT_ROOT_META_SIZE: usize = mem::size_of::<BITRootMeta>();
@@ -28,6 +31,7 @@ impl Serialize for BITRootMeta {
         let mut vec = Vec::new();
         vec.try_extend_from_slice(&unsafe { mem::transmute::<u64, [u8; 8]>(self.unique_id) })?;
         vec.try_extend_from_slice(&unsafe { mem::transmute::<usize, [u8; 8]>(self.level) })?;
+        vec.try_extend_from_slice(&unsafe { mem::transmute::<usize, [u8; 8]>(self.size) })?;
         vec.try_extend_from_slice(&self.record.serialize()?)?;
         vec.try_resize(BIT_ROOT_META_SIZE, 0u8)?;
 
@@ -43,10 +47,12 @@ impl Deserialize for BITRootMeta {
 
         let unique_id = unsafe { mem::transmute::<[u8; 8], u64>(buf[0..8].try_into().unwrap()) };
         let level = unsafe { mem::transmute::<[u8; 8], usize>(buf[8..16].try_into().unwrap()) };
+        let size = unsafe { mem::transmute::<[u8; 8], usize>(buf[16..24].try_into().unwrap()) };
         let record =
-            IndirectRecord::deserialize(buf[16..16 + INDIRECT_RECORD_SIZE].try_into().unwrap())?;
+            IndirectRecord::deserialize(buf[24..24 + INDIRECT_RECORD_SIZE].try_into().unwrap())?;
 
         Ok(Self {
+            size,
             unique_id,
             level,
             record,
@@ -66,7 +72,7 @@ impl BITRootMeta {
         &self,
         aead: &Pin<Box<Aead>>,
         bdev: &BlockDevice,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         cache: &mut LruCache<u64, IndirectBlock>,
     ) -> Result<BIT> {
         let record = self.record.record;
@@ -105,6 +111,7 @@ impl BITRootMeta {
 
         Ok(BIT {
             root,
+            size: self.size,
             record: self.record.clone(),
             level: self.level,
         })
@@ -169,6 +176,7 @@ impl Deserialize for BITCategory {
 }
 
 impl BITCategory {
+    /// Create a new BITCategory
     pub fn new() -> Result<Self> {
         let mut category = Vec::new();
         for _ in 0..LSM_TREE_MAX_LEVEL {
@@ -181,6 +189,7 @@ impl BITCategory {
         })
     }
 
+    /// Get the number of BIT
     pub fn len(&self) -> usize {
         let mut len = 0;
         for per_level_category in &self.category {
@@ -189,24 +198,73 @@ impl BITCategory {
         len
     }
 
-    pub fn add_bit(&mut self, bit: BIT) -> Result {
+    /// Add a BIT into BITCategory
+    pub fn add_bit(&mut self, bit: BIT, level: usize) -> Result {
+        if level >= LSM_TREE_MAX_LEVEL {
+            return Err(EINVAL);
+        }
+
         let meta_info = BITRootMeta {
             unique_id: self.bit_unique_id,
             record: bit.record,
             level: bit.level,
+            size: bit.size(),
         };
 
         self.bit_unique_id += 1;
-        self.category[1].try_push(meta_info)?;
+        self.category[level].try_push(meta_info)?;
 
         Ok(())
     }
 
+    /// Get the number of BIT in a certain level
+    pub fn level_size(&self, level: usize) -> usize {
+        self.category[level].len()
+    }
+
+    /// Get the root metainfo of a BIT through its unique_id
+    pub fn get_bit(&self, level: usize, index: usize) -> Option<&BITRootMeta> {
+        if index >= self.category[level].len() {
+            return None;
+        }
+        Some(&self.category[level][index])
+    }
+
+    /// Remove a BIT through its unique_id
+    pub fn release_bit(&mut self, level: usize, unique_id: u64) -> Result {
+        let mut index = None;
+        let len = self.category[level].len();
+        for i in 0..len {
+            if self.category[level][i].unique_id == unique_id {
+                index = Some(i);
+            }
+        }
+
+        match index {
+            Some(idx) => {
+                self.category[level].remove(idx);
+                Ok(())
+            }
+            None => Err(EINVAL),
+        }
+    }
+
+    /// Reversely iterate the BIT of a certain level
     pub fn iter_level(&self, level: usize) -> Result<Rev<Iter<'_, BITRootMeta>>> {
         if level >= self.category.len() {
             return Err(EINVAL);
         }
 
         Ok(self.category[level].iter().rev())
+    }
+
+    /// Check whether to start a major compaction job
+    pub fn is_compaction_required(&self) -> bool {
+        for level in 0..self.category.len() {
+            if self.category[level].len() >= MAX_COMPACTION_NUMBER {
+                return true;
+            }
+        }
+        return false;
     }
 }

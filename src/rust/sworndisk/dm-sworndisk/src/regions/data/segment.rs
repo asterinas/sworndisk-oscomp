@@ -71,7 +71,7 @@ impl DataSegment {
         len: usize,
         aead: &Pin<Box<Aead>>,
         checkpoint: &mut Checkpoint,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         memtable: &mut MemTable,
         bdev: &BlockDevice,
     ) -> Result<(usize, u64)> {
@@ -144,7 +144,7 @@ impl DataSegment {
         &mut self,
         aead: &Pin<Box<Aead>>,
         checkpoint: &mut Checkpoint,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         memtable: &mut MemTable,
         bdev: &BlockDevice,
     ) -> Result {
@@ -169,7 +169,7 @@ impl DataSegment {
         used: &mut u64,
         aead: &Pin<Box<Aead>>,
         checkpoint: &mut Checkpoint,
-        client: &mut DmIoClient,
+        client: &DmIoClient,
         memtable: &mut MemTable,
         bdev: &BlockDevice,
     ) -> Result {
