@@ -60,7 +60,7 @@
 
 - Device Mapper主要分为用户空间部分和内核空间部分。用户空间相关部分主要负责配置具体的策略和控制逻辑，比如逻辑设备和哪些物理设备建立映射，怎么建立这些映射关系等。
 
-<img src="../assets/device_mapper.png" alt="img" style="zoom:80%;" />
+![](../assets/device_mapper.png)
 
 - 内核中主要提供完成这些用户空间策略所需要的机制，负责具体过滤和重定向 IO 请求。通过不同的驱动插件，转发 IO 请求至目的设备上。
 
@@ -94,7 +94,7 @@ config DM_SWORNDISK_TEST
 
 - 通常在内核源码的根目录使用 make menuconfig 调整编译配置
 
-<img src="../assets/menuconfig.png" alt="img" style="zoom: 50%;" />
+![](../assets/menuconfig.png)
 
 - SwornDisk 依赖 BLK_DEV_DM 选项，其必须先被 Enable 才能选中 SwornDisk
 
@@ -167,7 +167,7 @@ $ make scripts
 
 - 编辑.config文件，
 
-<img src="../assets/config_file.png" alt="img" style="zoom: 100%;" />
+![](../assets/config_file.png)
 
 找到 CONFIG_SYSTEM_TRUSTED_KEYS，将值置空；
 
@@ -445,7 +445,7 @@ struct default_segment_allocator {
 
 - 日志结构的合并树（**LSM Tree**）是一种分层的、有序的、基于硬盘的数据结构，它的核心思路非常简单，首先写入数据到内存中，不需要每次有数据更新就必须将数据写入到磁盘中，等到积累到一定阈值之后，再使用归并排序的方式将内存中的数据合并追加到磁盘队尾(因为所有待排序的树都是有序的，可以通过合并排序的方式快速合并到一起)。
 
-![img](../assets/lsm_tree.png)
+![](../assets/lsm_tree.png)
 
 - 如上图所示，日志结构合并树涉及到存储在内存、磁盘上的两大组成部分，在内存中的部分通常被称为 **MemTable**，而在磁盘上的部分是层次结构，依次被标注为 **Level 0、Level 1、...、Level K**。
 
