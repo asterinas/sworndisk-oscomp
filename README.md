@@ -67,6 +67,10 @@ SwornDisk的安全性高于Linux内核中现有各种文件I/O（如[eCryptFS](h
 
 我们未来计划继续完善SwornDisk以及Rust版Device Mapper框架的实现，并希望最终能将我们代码贡献给Linux内核主干。
 
+## 性能测试
+
+![fio基准测试](docs/assets/fio_benchmark.png)
+
 ## 项目演示
 - [C版本](https://www.bilibili.com/video/BV1YL4y1K7cY/)
 - [Rust版本](https://www.bilibili.com/video/BV1NB4y197Et/)
