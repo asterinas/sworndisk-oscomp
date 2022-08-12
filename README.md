@@ -55,7 +55,7 @@ SwornDisk的安全性高于Linux内核中现有各种文件I/O（如[eCryptFS](h
 
 为了避免上述的写放大问题，SwornDisk采用了一种全新的日志结构（log-structured）的设计。如下右图所示，该日志结构的设计包含三个层面的日志（logging）：一个加密的数据日志，一个基于[Log-Structured Merge Tree（LSM-tree）](https://en.wikipedia.org/wiki/Log-structured_merge-tree)的安全索引，以及一个安全日志。安全索引保护数据日志，而安全日志又保护安全索引。最终达到的效果是，更新一个数据块（比如D2），只需要向加密数据日志追加写1个新的数据块，1条索引记录，以及1条日志记录。写放大比仅为1  + ε，其中ε << 1。
 
-该新型日志结构的设计，使得SwornDisk的随机写性能大幅优于传统方案，也令SwornDisk的总体I/O开销较低，可以满足实用应用的需求。关于设计的更多细节，见我们（尚未投稿的）[英文版论文](docs/sworndisk_preview_version_20220605.pdf)。
+该新型日志结构的设计，使得SwornDisk的随机写性能大幅优于传统方案，也令SwornDisk的总体I/O开销较低，可以满足实用应用的需求。关于设计的更多细节，见我们（尚未投稿的）[英文版论文](docs/sworndisk_preview_version_20220812.pdf)。
 
 ### C/Rust双语言的工程实践
 
