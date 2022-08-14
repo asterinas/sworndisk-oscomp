@@ -70,6 +70,11 @@ SwornDisk的安全性高于Linux内核中现有各种文件I/O（如[eCryptFS](h
 ## 性能测试
 
 ![fio基准测试](docs/assets/fio_benchmark.png)
+**图3. fio基准测试结果（其中CryptDisk是一个仅加密方案，没有MHT，安全性远弱于SwornDisk。在Linux上的实现是[dm-crypt](https://www.kernel.org/doc/html/latest/admin-guide/device-mapper/dm-crypt.html)。）**
+
+如上图所示，SwornDisk在随机写上性能远高于CryptDisk，后者是一个仅加密而未采用其他任何其他安全措施的方案。SwornDisk对顺序写、顺序读、随机读的性能仅略逊于CryptDisk。考虑到SwornDisk的安全性远超CryptDisk，我们认为SwornDisk的性能表现是令人满意的。
+
+我们还使用其他多种基准测试工具，评估了SwornDisk的性能，结果均符合预期。更多性能测试结果，见[英文版论文](docs/sworndisk_preview_version_20220812.pdf)。
 
 ## 项目演示
 - [C版本](https://www.bilibili.com/video/BV1YL4y1K7cY/)
